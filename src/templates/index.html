@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bus Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Bus Tracker</h1>
+    <div id="bus-position"></div>
+    <script>
+        var socket = io();
+        socket.on('bus_position', function(data) {
+            document.getElementById('bus-position').innerText = 'Bus Position: ' + data.lat + ', ' + data.lon;
+        });
+    </script>
+</body>
+</html>

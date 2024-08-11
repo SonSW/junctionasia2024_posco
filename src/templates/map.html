@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bus Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotatedmarker/leaflet.rotatedMarker.min.js"></script>
+    <style>
+        #map {
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+    var map = L.map('map').setView([{{ bus_routes[0][0].lat }}, {{ bus_routes[0][0].lon }}], {{ initial_zoom }});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+    }).addTo(map);
+
+    var busIcons = [];
+    var busMarkers = [];
+    var polyline;
+    var previewPolyline;
+
+    {% for route in bus_routes %}
+    var busIcon = L.icon({
+        iconUrl: '/static/asset/previewBus.png',
+        iconSize: [29, 50],
+        iconAnchor: [14.5, 25],
+        popupAnchor: [0, -25]
+    });
+    busIcons.push(busIcon);
+
+    var busMarker = L.marker([{{ route[0].lat }}, {{ route[0].lon }}], {icon: busIcon, rotationAngle: 0}).addTo(map);
+    busMarkers.push(busMarker);
+    {% endfor %}
+
+    function drawPolyline(busIndex) {
+        if (polyline) {
+            map.removeLayer(polyline);
+        }
+        var busRoute = [
+            {% for coord in bus_routes[important_bus_index] %}
+            [{{ coord.lat }}, {{ coord.lon }}],
+            {% endfor %}
+        ];
+        polyline = L.polyline(busRoute, {color: 'blue'}).addTo(map);
+    }
+
+    function drawPreviewPolyline(busIndex) {
+        if (previewPolyline) {
+            map.removeLayer(previewPolyline);
+        }
+        var busRoute = [
+            {% for coord in preview_route %}
+            [{{ coord.lat }}, {{ coord.lon }}],
+            {% endfor %}
+        ];
+        previewPolyline = L.polyline(busRoute, {color: 'red'}).addTo(map);
+    }
+
+    drawPolyline({{ important_bus_index }});
+    {% if draw_preview %}
+    drawPreviewPolyline({{ important_bus_index }});
+    {% endif %}
+
+    var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+    socket.on('bus_position', function(data) {
+        console.log(`Bus ${data.bus_id} moving to [${data.lat}, ${data.lon}]`);  // Debugging statement
+        var busMarker = busMarkers[data.bus_id];
+        var oldLatLng = busMarker.getLatLng();
+        busMarker.setLatLng([data.lat, data.lon]);
+        var angle = Math.atan2(data.lon - oldLatLng.lng, data.lat - oldLatLng.lat) * 180 / Math.PI;
+        busMarker.setRotationAngle(angle + 180);
+    });
+
+    socket.on('important_bus_update', function(data) {
+        drawPolyline(data.important_bus_index);
+        if (data.draw_preview) {
+            drawPreviewPolyline(data.important_bus_index);
+        }
+    });
+
+    // Function to handle map clicks
+    function onMapClick(e) {
+        var popup = L.popup()
+            .setLatLng(e.latlng)
+            .setContent('<p>Coordinates: ' + e.latlng.lat + ', ' + e.latlng.lng + '</p><button onclick="sendOkClick(' + e.latlng.lat + ', ' + e.latlng.lng + ')">OK</button>')
+            .openOn(map);
+    }
+
+    // Function to send OK button click to the server
+    function sendOkClick(lat, lng) {
+        fetch('/ok_click', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ lat: lat, lng: lng })
+        }).then(response => response.json())
+          .then(data => console.log(data));
+        map.closePopup();
+    }
+
+    // Add click event listener to the map
+    map.on('click', onMapClick);
+
+    </script>
+</body>
+</html>
